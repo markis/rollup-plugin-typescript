@@ -1,2 +1,4 @@
 /node_modules
+/test/etc
+/test/node_modules
 dist

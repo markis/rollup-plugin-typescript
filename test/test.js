@@ -1,4 +1,6 @@
 const assert = require( 'assert' );
+const proc = require('child_process');
+const fs = require('fs');
 const rollup = require( 'rollup' );
 const assign = require( 'object-assign' );
 const typescript = require( '..' );
@@ -176,7 +178,7 @@ describe( 'rollup-plugin-typescript', function () {
 		const b = await bundle( 'sample/jsx/main.tsx', { jsx: 'react' });
 		const { code } = await b.generate({ format: 'es' });
 
-		assert.notEqual( code.indexOf( 'const __assign = ' ), -1,
+		assert.notEqual( code.indexOf( ' __assign = ' ), -1,
 			'should contain __assign definition' );
 
 		const usage = code.indexOf( 'React.createElement("span", __assign({}, props), "Yo!")' );
@@ -216,6 +218,51 @@ describe( 'rollup-plugin-typescript', function () {
 		});
 
 		assert.ok( map.sources.every( source => source.indexOf( 'typescript-helpers' ) === -1) );
+	});
+
+	describe( 'typescript 2', () => {
+		const TS2_LIB = './node_modules/typescript/lib/typescript.js';
+		let ts2InstallPromise;
+
+		before(() => {
+			/**
+			 * Some tests depend on TS2 being installed.  For backwards compatibility this project
+			 * will continue to have TS 1.8.9 as it's dependency.  But for these tests, we will install
+			 * TS2 into a specific folder and then require it in for this test.
+			 */
+
+			const exists = fs.existsSync(TS2_LIB);
+			if (!exists) {
+				ts2InstallPromise = new Promise((resolve, reject) => {
+					proc.exec('npm install --prefix ./ typescript@2', error => error ? reject(error) : resolve());
+				});
+			}
+		});
+
+		it( 'imports new ts2 helpers', async () => {
+			await ts2InstallPromise;
+
+			const b = await bundle( 'sample/ts2-features/main.ts', {
+				typescript: require( TS2_LIB ),
+				useTSLibFallback: false
+			});
+
+			const { code } = await b.generate({ format: 'cjs' });
+
+			assert.ok( code.includes('function __makeTemplateObject') );
+			assert.ok( eval(code) ); // if compiled in TS2 will be true;
+		});
+
+		it( 'will use the tsHelper fallback for legacy usage', async () => {
+			const b = await bundle( 'sample/ts2-features/main.ts', {
+				useTSLibFallback: true
+			});
+
+			const { code } = await b.generate({ format: 'cjs' });
+
+			assert.ok( !code.includes('function __makeTemplateObject') );
+			assert.ok( !eval(code) );  // if compiled in TS <2 will be false;
+		});
 	});
 });
 

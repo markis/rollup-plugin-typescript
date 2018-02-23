@@ -1,7 +1,5 @@
 import * as ts from 'typescript';
 import { createFilter } from 'rollup-pluginutils';
-import * as path from 'path';
-import * as fs from 'fs';
 import assign from 'object-assign';
 import compareVersions from 'compare-versions';
 
@@ -9,6 +7,7 @@ import { endsWith } from './string';
 import { getDefaultOptions, compilerOptionsFromTsConfig, adjustCompilerOptions } from './options.js';
 import fixExportClass from './fixExportClass';
 import resolveHost from './resolveHost';
+import { helpersId, getHelpersImport, getHelpersSource } from './tsHelpers';
 
 /*
 interface Options {
@@ -17,12 +16,9 @@ interface Options {
 	exclude?: string | string[];
 	typescript?: typeof ts;
 	module?: string;
+	useTSLibFallback?: boolean;
 }
 */
-
-// The injected id for helpers. Intentially invalid to prevent helpers being included in source maps.
-const helpersId = '\0typescript-helpers';
-const helpersSource = fs.readFileSync( path.resolve( __dirname, '../src/typescript-helpers.js' ), 'utf-8' );
 
 export default function typescript ( options ) {
 	options = assign( {}, options || {} );
@@ -44,6 +40,12 @@ export default function typescript ( options ) {
 		compilerOptionsFromTsConfig( typescript );
 
 	delete options.tsconfig;
+
+	const useTSLibFallback = options.useTSLibFallback;
+	delete options.useTSLibFallback;
+
+	const helpersSource = getHelpersSource({ useTSLibFallback });
+	const helpersImport = getHelpersImport({ useTSLibFallback });
 
 	// Since the CompilerOptions aren't designed for the Rollup
 	// use case, we'll adjust them for use with Rollup.
@@ -142,8 +144,7 @@ export default function typescript ( options ) {
 
 			return {
 				// Always append an import for the helpers.
-				code: transformed.outputText +
-					`\nimport { __assign, __awaiter, __extends, __decorate, __metadata, __param } from '${helpersId}';`,
+				code: transformed.outputText + helpersImport,
 
 				// Rollup expects `map` to be an object so we must parse the string
 				map: transformed.sourceMapText ? JSON.parse(transformed.sourceMapText) : null
